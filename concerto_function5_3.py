@@ -83,7 +83,7 @@ def serialize_example_batch(x_feature, x_weight, y_batch,x_id):
         'id': _bytes_feature(x_id)
     }
 
-    example_proto = tf.train.Example(features=tf.train.Features(feature=feature))
+    example_proto = tf.train.Example(features=tf.train.Features(feature=feature))  # 
     return example_proto.SerializeToString()
 
 
@@ -107,7 +107,7 @@ def create_tfrecord(source_file,  batch_dict, tfrecord_file, zero_filter=False, 
             x = x + 10e-6
             indexes = np.where(x >= 0.0)
         else:
-            indexes = np.where(x > 0.0)
+            indexes = np.where(x > 0.0)   # 这一步基本不会被执行，否则不同样本的维度可能不一致
         values = x[indexes]
 
         features = np.array(indexes)
@@ -133,7 +133,7 @@ def create_tfrecord(source_file,  batch_dict, tfrecord_file, zero_filter=False, 
         batch = item[0]
         examples = item[1]
         if zero_filter is False:
-            file = tfrecord_file.replace('.tfrecord', '_{}.tfrecord'.format(batch))
+            file = tfrecord_file.replace('.tfrecord', '_{}.tfrecord'.format(batch))   # 每个batch一个tf_rec文件
         else:
             if norm is False:
                 file = tfrecord_file.replace('.tfrecord', '_{}_no_zero_no_norm.tfrecord'.format(batch))
@@ -170,7 +170,7 @@ def concerto_intersect_gene(ref_adata, query_adata, parameters=None):
 
 # HVG
 def concerto_HVG(ref_adata,query_adata,n_top_genes=None, min_disp=0.5, min_mean=0.0125, max_mean=3,
-	parameters=None):
+    parameters=None):
 
     sc.pp.highly_variable_genes(query_adata, n_top_genes=n_top_genes, min_disp=0.5,min_mean=0.0125, max_mean=3)
     sc.pp.highly_variable_genes(ref_adata, n_top_genes=n_top_genes, min_disp=0.5, min_mean=0.0125, max_mean=3)
@@ -234,7 +234,7 @@ def concerto_padding2(ref_gene_list_path:str, ref_weight_path:str, query_adata):
 # 造tfrecords
 def concerto_make_tfrecord(processed_ref_adata, tf_path, batch_col_name=None):
     # 有输入batch_col_name的时候，用这列作为batchid， 若无假设所有是一个batch
-	# 不做乱序,
+    # 不做乱序,
     if batch_col_name is None:
         batch_col_name = 'batch_'
         sample_num = len(processed_ref_adata.obs_names.tolist())
@@ -333,9 +333,9 @@ def create_tfrecord_supervised(source_file,  batch_dict,label_dict, tfrecord_fil
     np.savez_compressed(file, **save_dict)
 
 # 造tfrecords
-def concerto_make_tfrecord_supervised(processed_ref_adata, tf_path,save_dict = None, batch_col_name=None,label_col_name=None):
+def concerto_make_tfrecord_supervised(processed_ref_adata, tf_path, save_dict = None, batch_col_name=None,label_col_name=None):
     # 有输入batch_col_name的时候，用这列作为batchid， 若无假设所有是一个batch
-	# 不做乱序,
+    # 不做乱序,
     tfrecord_file = os.path.join(tf_path, 'tf.tfrecord')
     if not os.path.exists(tf_path):
         os.makedirs(tf_path)
@@ -435,7 +435,7 @@ def create_tfrecord_supervised_1batch(source_file, batch_dict,label_dict, tfreco
 # 造tfrecords
 def concerto_make_tfrecord_supervised_1batch(processed_ref_adata, tf_path, save_dict = None, batch_col_name=None,label_col_name=None):
     # 有输入batch_col_name的时候，用这列作为batchid， 若无假设所有是一个batch
-	# 不做乱序,
+    # 不做乱序,
     tfrecord_file = os.path.join(tf_path, 'tf.tfrecord')
     if not os.path.exists(tf_path):
         os.makedirs(tf_path)
@@ -526,7 +526,7 @@ def concerto_train_ref(ref_tf_path:str, weight_path:str, super_parameters=None):
         super_parameters = {'batch_size':32,'epoch':3,'lr':1e-5}
 #     dirname = os.getcwd()
 #     f = np.load(ref_tf_path + './vocab_size.npz')
-    f = np.load(os.path.join(ref_tf_path,'vocab_size.npz'))
+    f = np.load(os.path.join(ref_tf_path,'vocab_size.npz'))  # feature(input) dim
     vocab_size = int(f['vocab size'])
     encode_network = multi_embedding_attention_transfer(multi_max_features=[vocab_size],
                                                         mult_feature_names=['RNA'],
@@ -580,7 +580,7 @@ def concerto_train_ref(ref_tf_path:str, weight_path:str, super_parameters=None):
                     mu_1 = mu_enc(z1)
                     var_1 = tf.exp(var_enc(z1))
                     ssl_loss = simclr_loss(z1, z2,temperature = 0.1)
-                    loss = tf.keras.losses.kullback_leibler_divergence(mu_1, var_1) + ssl_loss
+                    loss = tf.keras.losses.kullback_leibler_divergence(mu_1, var_1) + ssl_loss  # 前面那部分是个什么牛马东西？
                     train_loss(loss)
 
                 variables = [encode_network.trainable_variables,
@@ -863,187 +863,6 @@ def concerto_train_ref_supervised_yzs(ref_tf_path:str, weight_path:str, super_pa
 
     return weight_path
 
-
-def concerto_train_inter_supervised_uda(ref_tf_path: str, weight_path: str,tissue_id: int, super_parameters=None):
-
-    def get_l2_loss(variables, excluded_keywords=None):
-        """Traverse `tf.trainable_variables` compute L2 reg. Ignore `batch_norm`."""
-
-        def _is_excluded(v):
-            """Guess whether a variable belongs to `batch_norm`."""
-            keywords = ['batchnorm', 'batch_norm', 'bn',
-                        'layernorm', 'layer_norm']
-            if excluded_keywords is not None:
-                keywords += excluded_keywords
-            return any([k in v.name.lower() for k in keywords])
-
-        l2_losses = [tf.nn.l2_loss(v) for v in variables if not _is_excluded(v)]
-        return tf.add_n(l2_losses)
-
-    if not os.path.exists(weight_path):
-        os.makedirs(weight_path)
-    if super_parameters is None:
-        super_parameters = {'batch_size': 32, 'epoch_pretrain': 1, 'epoch_classifier': 5, 'lr': 1e-5, 'drop_rate': 0.1}
-    #     dirname = os.getcwd()
-    f = np.load(ref_tf_path + '/vocab_size.npz')
-
-    vocab_size = int(f['vocab size'])
-    num_classes = int(f['classes number'])
-    encode_network = multi_embedding_attention_transfer(multi_max_features=[vocab_size],
-                                                        mult_feature_names=['RNA'],
-                                                        embedding_dims=128,
-                                                        include_attention=True,
-                                                        drop_rate=super_parameters['drop_rate'],
-                                                        head_1=128,
-                                                        head_2=128,
-                                                        head_3=128)
-
-    decode_network = multi_embedding_attention_transfer(multi_max_features=[vocab_size],
-                                                        mult_feature_names=['RNA'],
-                                                        embedding_dims=128,
-                                                        include_attention=False,
-                                                        drop_rate=super_parameters['drop_rate'],
-                                                        head_1=128,
-                                                        head_2=128,
-                                                        head_3=128)
-    mu_enc = EncoderHead()
-    var_enc = EncoderHead()
-    #     tf_list_1 = os.listdir(os.path.join(ref_tf_path))
-    tf_list_1 = [f for f in os.listdir(os.path.join(ref_tf_path)) if 'tfrecord' in f]
-    tf_list_1.remove('tf_{}.tfrecord'.format(tissue_id))
-    print('tf_list:',tf_list_1)
-    train_source_list = []
-    for i in tf_list_1:
-        train_source_list.append(os.path.join(ref_tf_path, i))
-
-
-    valid_files = os.path.join(ref_tf_path, 'tf_{}.tfrecord'.format(tissue_id))
-    print('valid_files path:',valid_files)
-    train_loss = tf.keras.metrics.Mean(name='train_loss')
-    cls_loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
-    train_cls_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_cls_accuracy')
-    test_cls_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='test_cls_accuracy')
-    total_update_steps = 300 * super_parameters['epoch_pretrain']
-    lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(super_parameters['lr'], total_update_steps,
-                                                                super_parameters['lr'] * 1e-2, power=1)
-    opt_simclr = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
-
-    for epoch in range(super_parameters['epoch_pretrain']):
-        np.random.shuffle(train_source_list)
-        for file in train_source_list:
-            print(file)
-            train_db = create_classifier_dataset_multi_supervised([file],
-                                                                  batch_size=super_parameters['batch_size'],
-                                                                  is_training=True,
-                                                                  data_augment=False,
-                                                                  shuffle_size=10000)
-
-            train_loss.reset_states()
-            train_cls_accuracy.reset_states()
-            test_cls_accuracy.reset_states()
-            for step, (source_features, source_values, source_label, source_batch, source_id) in enumerate(train_db):
-                # enumerate
-                with tf.GradientTape() as tape:
-                    z1 = encode_network([source_features, source_values], training=True)
-                    z2 = decode_network([source_values], training=True)
-                    mu_1 = mu_enc(z1)
-                    var_1 = tf.exp(var_enc(z1))
-                    ssl_loss = simclr_loss(z1, z2, temperature=0.1)
-                    loss = tf.keras.losses.kullback_leibler_divergence(mu_1, var_1) + ssl_loss
-                    train_loss(loss)
-
-                variables = [encode_network.trainable_variables,
-                             decode_network.trainable_variables,
-                             mu_enc.trainable_variables,
-                             var_enc.trainable_variables
-                             ]
-                grads = tape.gradient(loss, variables)
-                for grad, var in zip(grads, variables):
-                    opt_simclr.apply_gradients(zip(grad, var))
-
-                if step > 0 and step % 5 == 0:
-                    template = 'Epoch {}, step {}, simclr loss: {:0.4f}.'
-                    print(template.format(epoch + 1,
-                                          str(step),
-                                          train_loss.result()))
-
-    opt = tf.keras.optimizers.Adam(learning_rate=1e-3)
-    output = encode_network.layers[-1].output
-    output = tf.keras.layers.Dense(num_classes, activation='softmax', name='CLS')(output)
-    output_decode = decode_network.layers[-1].output
-    output_decode = tf.keras.layers.Dense(num_classes, activation='softmax', name='CLS')(output_decode)
-    cls_network = tf.keras.Model(encode_network.input, outputs=output)
-    cls_network_1 = tf.keras.Model(decode_network.input, outputs=output_decode)
-    for epoch in range(super_parameters['epoch_classifier']):
-        np.random.shuffle(train_source_list)
-        valid_db = create_classifier_dataset_multi_supervised([valid_files],
-                                                                  batch_size=super_parameters['batch_size'],
-                                                                  is_training=True,
-                                                                  data_augment=False,
-                                                                  shuffle_size=10000)
-        valid_db.repeat()
-        for file in train_source_list:
-            print(file)
-            train_db = create_classifier_dataset_multi_supervised([file],
-                                                                  batch_size=super_parameters['batch_size'],
-                                                                  is_training=True,
-                                                                  data_augment=False,
-                                                                  shuffle_size=10000)
-
-            train_loss.reset_states()
-            train_cls_accuracy.reset_states()
-            test_cls_accuracy.reset_states()
-            step = 0
-            for (source_features, source_values, source_label, source_batch, source_id), \
-                (target_features, target_values, target_label, target_batch, target_id) in (zip(train_db, valid_db)):
-                # enumerate
-                step += 1
-                with tf.GradientTape() as tape:
-                    outputs = cls_network([source_features, source_values], training=True)
-                    classifer_loss = cls_loss_object(source_label, outputs)
-                    # UDA
-                    uda_temp = 0.5
-                    uda_threshold = 0.0
-                    uda_data = 1
-                    weight_decay = 1e-4
-                    target_pred = cls_network([target_features, target_values], training=True)
-                    aug_target_pred = cls_network_1(target_values, training=True)
-                    target_labels = tf.nn.softmax(target_pred / uda_temp, axis=-1)
-                    target_labels = tf.stop_gradient(target_labels)
-                    target_cross_entropy = (target_labels * tf.nn.log_softmax(aug_target_pred, axis=-1))
-                    largest_probs = tf.reduce_max(target_labels, axis=-1, keepdims=True)
-                    masks_target = tf.greater_equal(largest_probs, uda_threshold)
-                    masks_target = tf.cast(masks_target, tf.float32)
-                    masks_target = tf.stop_gradient(masks_target)
-                    target_cross_entropy = tf.reduce_mean(-target_cross_entropy * masks_target)
-                    l2_reg_rate = tf.cast(weight_decay, tf.float32)
-                    weight_dec = get_l2_loss(cls_network.trainable_variables)
-                    total_loss = classifer_loss + target_cross_entropy + weight_dec * l2_reg_rate
-
-                    source_pred = outputs
-                    train_cls_accuracy(source_label, source_pred)
-                    train_loss(total_loss)
-
-                variables = [cls_network.trainable_variables]
-                grads = tape.gradient(classifer_loss, variables)
-                for grad, var in zip(grads, variables):
-                    opt.apply_gradients(zip(grad, var))
-
-                if step > 0 and step % 5 == 0:
-                    template = 'Epoch {}, step {}, train cls loss: {:0.4f}, train acc: {:0.4f}'
-                    print(template.format(epoch,
-                                          str(step),
-                                          train_loss.result(),
-                                          train_cls_accuracy.result(),
-                                          ))
-        encode_network.save_weights(
-            weight_path + 'weight_encoder_epoch{}.h5'.format(str(epoch + 1)))
-        decode_network.save_weights(
-            weight_path + 'weight_decoder_epoch{}.h5'.format(str(epoch + 1)))
-        cls_network.save_weights(os.path.join(weight_path, 'weight_cls_epoch{}.h5'.format(str(epoch + 1))))
-
-    return weight_path
-
 # test
 def concerto_test_1set_attention_supervised(model_path: str, ref_tf_path: str, super_parameters=None, n_cells_for_ref=5000):
     if super_parameters is None:
@@ -1131,81 +950,7 @@ def concerto_test_1set_attention_supervised(model_path: str, ref_tf_path: str, s
 
     return acc,f1_scores_median
 
-def concerto_test_inter_supervised(model_path: str, ref_tf_path: str, tissue_id:int, super_parameters=None):
-    if super_parameters is None:
-        super_parameters = {'batch_size': 128, 'epoch': 1, 'lr': 1e-5,'drop_rate': 0.1}
 
-    f = np.load(os.path.join(ref_tf_path, 'vocab_size.npz'))
-    vocab_size = int(f['vocab size'])
-    num_classes = int(f['classes number'])
-    label_dict = f['label_dict']
-    batch_dict = f['batch_dict']
-    batch_size = super_parameters['batch_size']
-    epoch = super_parameters['epoch']
-    encode_network = multi_embedding_attention_transfer(
-        multi_max_features=[vocab_size],
-        mult_feature_names=['RNA'],
-        embedding_dims=128,
-        include_attention=True,
-        drop_rate=super_parameters['drop_rate'],
-        head_1=128,
-        head_2=128,
-        head_3=128)
-    # tf_list_1 = [f for f in os.listdir(os.path.join(ref_tf_path)) if 'tfrecord' in f]
-    # train_source_list = [os.path.join(ref_tf_path, i) for i in tf_list_1]
-
-    # choose last epoch as test model
-    # weight_id_list = []
-    # weight_list = [f for f in os.listdir(model_path) if (f.endswith('h5') and f.startswith('weight') )]
-    # weight_list = [f for f in os.listdir(model_path) if (f.endswith('h5') and ('cls' in f))]  # yyyx 1214
-    # for id in weight_list:
-    #     id_1 = re.findall('.*epoch(.*).h5', id)  # f1
-    #     weight_id_list.append(int(id_1[0]))
-    valid_files = os.path.join(ref_tf_path, 'tf_{}.tfrecord'.format(tissue_id))
-    weight_name_ = f'weight_cls_epoch{epoch}.h5'
-    output = encode_network.layers[-1].output
-    output = tf.keras.layers.Dense(num_classes, activation='softmax', name='CLS')(output)
-    cls_network = tf.keras.Model(encode_network.input, outputs=output)
-    cls_network.load_weights(os.path.join(model_path, weight_name_))
-
-    t1 = time.time()
-    ref_db = create_classifier_dataset_multi_supervised(
-        [valid_files],
-        batch_size=batch_size,  # maybe slow
-        is_training=False,
-        data_augment=False,
-        shuffle_size=10000)
-
-    t2 = time.time()
-    print('load all tf in memory time(s)', t2 - t1)  # time consumption is huge this step!!!!
-    train_size = 0
-    for step, (target_features, target_values, target_label, target_batch, target_id) in enumerate(ref_db):
-        train_size += len(target_id)
-
-
-    t2 = time.time()
-    source_data_batch_1 = np.zeros((train_size))
-    source_data_label_1 = np.zeros((train_size))
-    source_data_pred_1 = np.zeros((train_size))
-    source_id_1 = []
-
-    all_samples = 0
-    for step, (target_features, target_values,target_label, target_batch, target_id) in enumerate(ref_db):
-
-        preds = cls_network([target_features, target_values], training=False)
-        preds_1 = np.argmax(preds, axis=1)
-        source_data_pred_1[all_samples:all_samples + len(target_id)] = preds_1
-        source_data_batch_1[all_samples:all_samples + len(target_id)] = target_batch
-        source_data_label_1[all_samples:all_samples + len(target_id)] = target_label
-        source_id_1.extend(list(target_id.numpy().astype('U')))
-        all_samples += len(target_id)
-
-    t3 = time.time()
-    print('test time', t3 - t2)
-    print('source_id len', len(source_id_1))
-
-    ari = adjusted_rand_score(source_data_label_1, source_data_pred_1)
-    return ari
 
 # query
 def concerto_train_query(ref_model_path:str,ref_tf_path:str,query_tf_path:str, weight_path:str, super_parameters=None):
@@ -1300,6 +1045,186 @@ def concerto_train_query(ref_model_path:str,ref_tf_path:str,query_tf_path:str, w
 
     return weight_path
 
+
+def concerto_train_inter_supervised_uda(ref_tf_path: str, weight_path: str,tissue_id: int, super_parameters=None):
+
+    def get_l2_loss(variables, excluded_keywords=None):
+        """Traverse `tf.trainable_variables` compute L2 reg. Ignore `batch_norm`."""
+
+        def _is_excluded(v):
+            """Guess whether a variable belongs to `batch_norm`."""
+            keywords = ['batchnorm', 'batch_norm', 'bn',
+                        'layernorm', 'layer_norm']
+            if excluded_keywords is not None:
+                keywords += excluded_keywords
+            return any([k in v.name.lower() for k in keywords])
+
+        l2_losses = [tf.nn.l2_loss(v) for v in variables if not _is_excluded(v)]
+        return tf.add_n(l2_losses)
+
+    if not os.path.exists(weight_path):
+        os.makedirs(weight_path)
+    if super_parameters is None:
+        super_parameters = {'batch_size': 32, 'epoch_pretrain': 1, 'epoch_classifier': 5, 'lr': 1e-5, 'drop_rate': 0.1}
+    #     dirname = os.getcwd()
+    f = np.load(ref_tf_path + '/vocab_size.npz')
+
+    vocab_size = int(f['vocab size'])
+    num_classes = int(f['classes number'])
+    encode_network = multi_embedding_attention_transfer(multi_max_features=[vocab_size],
+                                                        mult_feature_names=['RNA'],
+                                                        embedding_dims=128,
+                                                        include_attention=True,
+                                                        drop_rate=super_parameters['drop_rate'],
+                                                        head_1=128,
+                                                        head_2=128,
+                                                        head_3=128)
+
+    decode_network = multi_embedding_attention_transfer(multi_max_features=[vocab_size],
+                                                        mult_feature_names=['RNA'],
+                                                        embedding_dims=128,
+                                                        include_attention=False,
+                                                        drop_rate=super_parameters['drop_rate'],
+                                                        head_1=128,
+                                                        head_2=128,
+                                                        head_3=128)
+    mu_enc = EncoderHead()
+    var_enc = EncoderHead()
+    #     tf_list_1 = os.listdir(os.path.join(ref_tf_path))
+    tf_list_1 = [f for f in os.listdir(os.path.join(ref_tf_path)) if 'tfrecord' in f]
+    tf_list_1.remove('tf_{}.tfrecord'.format(tissue_id))
+    print('tf_list:',tf_list_1)
+    train_source_list = []
+    for i in tf_list_1:
+        train_source_list.append(os.path.join(ref_tf_path, i))
+
+    valid_files = os.path.join(ref_tf_path, 'tf_{}.tfrecord'.format(tissue_id))  # can be seen as query_record files
+    print('valid_files path:',valid_files)
+    train_loss = tf.keras.metrics.Mean(name='train_loss')
+    cls_loss_object = tf.keras.losses.SparseCategoricalCrossentropy()
+    train_cls_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_cls_accuracy')
+    test_cls_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='test_cls_accuracy')
+    total_update_steps = 300 * super_parameters['epoch_pretrain']
+    lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(super_parameters['lr'], total_update_steps,
+                                                                super_parameters['lr'] * 1e-2, power=1)
+    opt_simclr = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+
+    for epoch in range(super_parameters['epoch_pretrain']):
+        np.random.shuffle(train_source_list)
+        for file in train_source_list:
+            print(file)
+            train_db = create_classifier_dataset_multi_supervised([file],
+                                                                  batch_size=super_parameters['batch_size'],
+                                                                  is_training=True,
+                                                                  data_augment=False,
+                                                                  shuffle_size=10000)
+
+            train_loss.reset_states()
+            train_cls_accuracy.reset_states()
+            test_cls_accuracy.reset_states()
+            for step, (source_features, source_values, source_label, source_batch, source_id) in enumerate(train_db):
+                # enumerate
+                with tf.GradientTape() as tape:
+                    z1 = encode_network([source_features, source_values], training=True)
+                    z2 = decode_network([source_values], training=True)
+                    mu_1 = mu_enc(z1)
+                    var_1 = tf.exp(var_enc(z1))
+                    ssl_loss = simclr_loss(z1, z2, temperature=0.1)
+                    loss = tf.keras.losses.kullback_leibler_divergence(mu_1, var_1) + ssl_loss
+                    train_loss(loss)
+
+                variables = [encode_network.trainable_variables,
+                             decode_network.trainable_variables,
+                             mu_enc.trainable_variables,
+                             var_enc.trainable_variables
+                             ]
+                grads = tape.gradient(loss, variables)
+                for grad, var in zip(grads, variables):
+                    opt_simclr.apply_gradients(zip(grad, var))
+
+                if step > 0 and step % 5 == 0:
+                    template = 'Epoch {}, step {}, simclr loss: {:0.4f}.'
+                    print(template.format(epoch + 1,
+                                          str(step),
+                                          train_loss.result()))
+
+    opt = tf.keras.optimizers.Adam(learning_rate=1e-3)
+    output = encode_network.layers[-1].output
+    output = tf.keras.layers.Dense(num_classes, activation='softmax', name='CLS')(output)
+    output_decode = decode_network.layers[-1].output
+    output_decode = tf.keras.layers.Dense(num_classes, activation='softmax', name='CLS')(output_decode)
+    cls_network = tf.keras.Model(encode_network.input, outputs=output)
+    cls_network_1 = tf.keras.Model(decode_network.input, outputs=output_decode)
+    for epoch in range(super_parameters['epoch_classifier']):
+        np.random.shuffle(train_source_list)
+        valid_db = create_classifier_dataset_multi_supervised([valid_files],
+                                                                  batch_size=super_parameters['batch_size'],
+                                                                  is_training=True,
+                                                                  data_augment=False,
+                                                                  shuffle_size=10000)
+        valid_db.repeat()
+        for file in train_source_list:
+            print(file)
+            train_db = create_classifier_dataset_multi_supervised([file],
+                                                                  batch_size=super_parameters['batch_size'],
+                                                                  is_training=True,
+                                                                  data_augment=False,
+                                                                  shuffle_size=10000)
+
+            train_loss.reset_states()
+            train_cls_accuracy.reset_states()
+            test_cls_accuracy.reset_states()
+            step = 0
+            for (source_features, source_values, source_label, source_batch, source_id), \
+                (target_features, target_values, target_label, target_batch, target_id) in (zip(train_db, valid_db)):
+                # enumerate
+                step += 1
+                with tf.GradientTape() as tape:
+                    outputs = cls_network([source_features, source_values], training=True)
+                    classifer_loss = cls_loss_object(source_label, outputs)
+                    # UDA
+                    uda_temp = 0.5
+                    uda_threshold = 0.0
+                    uda_data = 1
+                    weight_decay = 1e-4
+                    target_pred = cls_network([target_features, target_values], training=True)
+                    aug_target_pred = cls_network_1(target_values, training=True)
+                    target_labels = tf.nn.softmax(target_pred / uda_temp, axis=-1)
+                    target_labels = tf.stop_gradient(target_labels)
+                    target_cross_entropy = (target_labels * tf.nn.log_softmax(aug_target_pred, axis=-1))
+                    largest_probs = tf.reduce_max(target_labels, axis=-1, keepdims=True)
+                    masks_target = tf.greater_equal(largest_probs, uda_threshold)   # 那这不是一定成立的嘛，cnm?
+                    masks_target = tf.cast(masks_target, tf.float32)
+                    masks_target = tf.stop_gradient(masks_target)
+                    target_cross_entropy = tf.reduce_mean(-target_cross_entropy * masks_target)
+                    l2_reg_rate = tf.cast(weight_decay, tf.float32)
+                    weight_dec = get_l2_loss(cls_network.trainable_variables)
+                    total_loss = classifer_loss + target_cross_entropy + weight_dec * l2_reg_rate
+
+                    source_pred = outputs
+                    train_cls_accuracy(source_label, source_pred)
+                    train_loss(total_loss)
+
+                variables = [cls_network.trainable_variables]
+                grads = tape.gradient(classifer_loss, variables)
+                for grad, var in zip(grads, variables):
+                    opt.apply_gradients(zip(grad, var))
+
+                if step > 0 and step % 5 == 0:
+                    template = 'Epoch {}, step {}, train cls loss: {:0.4f}, train acc: {:0.4f}'
+                    print(template.format(epoch,
+                                          str(step),
+                                          train_loss.result(),
+                                          train_cls_accuracy.result(),
+                                          ))
+        encode_network.save_weights(
+            weight_path + 'weight_encoder_epoch{}.h5'.format(str(epoch + 1)))
+        decode_network.save_weights(
+            weight_path + 'weight_decoder_epoch{}.h5'.format(str(epoch + 1)))
+        cls_network.save_weights(os.path.join(weight_path, 'weight_cls_epoch{}.h5'.format(str(epoch + 1))))
+
+    return weight_path
+
 # 无监督一起训REF和query，解决读入模型不一致的问题
 def concerto_train_ref_query(ref_tf_path: str, query_tf_path: str, weight_path: str, super_parameters=None):
     if not os.path.exists(weight_path):
@@ -1347,7 +1272,7 @@ def concerto_train_ref_query(ref_tf_path: str, query_tf_path: str, weight_path: 
     lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(super_parameters['lr'], total_update_steps,
                                                                 super_parameters['lr'] * 1e-2, power=1)
     opt_simclr = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
-    for epoch in range(super_parameters['epoch_pretrain']):
+    for epoch in range(super_parameters['epoch_pretrain']):         # multi-source problem
         np.random.shuffle(train_source_list)
         for file in train_source_list:
             print(file)
@@ -1431,6 +1356,169 @@ def concerto_train_ref_query(ref_tf_path: str, query_tf_path: str, weight_path: 
 
     return weight_path
 
+
+# 无监督一起训REF和query，解决读入模型不一致的问题
+def concerto_train_ref_query_multimodal(
+        ref_RNA_tf_path, 
+        ref_Protein_tf_path, 
+        query_RNA_tf_path, 
+        query_Protein_tf_path, 
+        weight_path, 
+        super_parameters=None
+    ):
+    if not os.path.exists(weight_path):
+        os.makedirs(weight_path)
+    if super_parameters is None:
+        super_parameters = {'batch_size': 64, 'epoch_pretrain': 3, 'epoch_fineturn': 1, 'lr': 1e-4,'drop_rate': 0.1}
+    # dirname = os.getcwd()
+    # f = np.load(ref_tf_path + './vocab_size.npz')
+    f = np.load(os.path.join(ref_RNA_tf_path, 'vocab_size.npz'))
+    vocab_size_RNA = int(f['vocab size'])
+    f = np.load(os.path.join(ref_Protein_tf_path, 'vocab_size.npz'))
+    vocab_size_Protein = int(f['vocab size'])
+
+    encode_network = multi_embedding_attention_transfer(multi_max_features=[vocab_size_RNA, vocab_size_Protein],
+                                                        mult_feature_names=['RNA', 'Protein'],
+                                                        embedding_dims=128,
+                                                        include_attention=True,
+                                                        drop_rate=super_parameters['drop_rate'],
+                                                        head_1=128,
+                                                        head_2=128,
+                                                        head_3=128)
+
+    decode_network = multi_embedding_attention_transfer(multi_max_features=[vocab_size_RNA, vocab_size_Protein],
+                                                        mult_feature_names=['RNA', 'Protein'],
+                                                        embedding_dims=128,
+                                                        include_attention=False,
+                                                        drop_rate=super_parameters['drop_rate'],
+                                                        head_1=128,
+                                                        head_2=128,
+                                                        head_3=128)
+    mu_enc = EncoderHead()
+    var_enc = EncoderHead()
+    # tf_list_1 = os.listdir(os.path.join(ref_tf_path))
+    tf_list_1 = [f for f in os.listdir(os.path.join(ref_RNA_tf_path)) if 'tfrecord' in f]
+    train_source_list_RNA = []
+    train_source_list_Protein = []
+    for i in tf_list_1:
+        train_source_list_RNA.append(os.path.join(ref_RNA_tf_path, i))
+        train_source_list_Protein.append(os.path.join(ref_Protein_tf_path, i))
+
+
+    tf_list_2 = [f for f in os.listdir(os.path.join(query_RNA_tf_path)) if 'tfrecord' in f]
+    train_target_list_RNA = []
+    train_target_list_Protein = []
+    for i in tf_list_2:
+        train_target_list_RNA.append(os.path.join(query_RNA_tf_path, i))
+        train_target_list_Protein.append(os.path.join(query_Protein_tf_path, i))
+
+
+    train_loss = tf.keras.metrics.Mean(name='train_loss')
+    train_cls_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='train_cls_accuracy')
+    test_cls_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(name='test_cls_accuracy')
+    total_update_steps = 300 * super_parameters['epoch_pretrain']
+    lr_schedule = tf.keras.optimizers.schedules.PolynomialDecay(super_parameters['lr'], total_update_steps,
+                                                                super_parameters['lr'] * 1e-2, power=1)
+    opt_simclr = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+    for epoch in range(super_parameters['epoch_pretrain']):         # multi-source problem
+        for RNA_file, Protein_file in zip(train_source_list_RNA, train_source_list_Protein):
+            print(RNA_file)
+            print(Protein_file)
+            train_db_RNA = create_classifier_dataset_multi([RNA_file],
+                                                       batch_size=super_parameters['batch_size'],
+                                                       is_training=True,
+                                                       data_augment=False,
+                                                       shuffle_size=10000)
+            train_db_Protein = create_classifier_dataset_multi([Protein_file],
+                                                       batch_size=super_parameters['batch_size'],
+                                                       is_training=True,
+                                                       data_augment=False,
+                                                       shuffle_size=10000)
+
+            train_loss.reset_states()
+            train_cls_accuracy.reset_states()
+            test_cls_accuracy.reset_states()
+            for step, ((source_features_RNA, source_values_RNA, source_batch_RNA, source_id_RNA), \
+                      (source_features_protein, source_values_protein, source_batch_Protein, source_id_Protein)) \
+                       in enumerate(zip(train_db_RNA, train_db_Protein)):
+                # enumerate
+                with tf.GradientTape() as tape:
+                    z1 = encode_network([[source_features_RNA, source_features_protein],
+                                         [source_values_RNA, source_values_protein]], training=True)
+                    z2 = decode_network([source_values_RNA, source_values_protein], training=True)
+                    mu_1 = mu_enc(z1)
+                    var_1 = tf.exp(var_enc(z1))
+                    ssl_loss = simclr_loss(z1, z2, temperature=0.1)
+                    loss = tf.keras.losses.kullback_leibler_divergence(mu_1, var_1) + ssl_loss
+                    train_loss(loss)
+
+                variables = [encode_network.trainable_variables,
+                             decode_network.trainable_variables,
+                             mu_enc.trainable_variables,
+                             var_enc.trainable_variables
+                             ]
+                grads = tape.gradient(loss, variables)
+                for grad, var in zip(grads, variables):
+                    opt_simclr.apply_gradients(zip(grad, var))
+
+                if step > 0 and step % 5 == 0:
+                    template = 'Epoch {}, step {}, simclr loss: {:0.4f}.'
+                    print(template.format(epoch + 1,
+                                          str(step),
+                                          train_loss.result()))
+
+    for epoch in range(super_parameters['epoch_fineturn']):
+        for RNA_file, Protein_file in zip(train_target_list_RNA, train_target_list_Protein):
+            print(RNA_file)
+            print(Protein_file)
+            train_db_RNA = create_classifier_dataset_multi([RNA_file],
+                                                       batch_size=super_parameters['batch_size'],
+                                                       is_training=True,
+                                                       data_augment=False,
+                                                       shuffle_size=10000)
+            train_db_Protein = create_classifier_dataset_multi([Protein_file],
+                                                       batch_size=super_parameters['batch_size'],
+                                                       is_training=True,
+                                                       data_augment=False,
+                                                       shuffle_size=10000)
+
+            train_loss.reset_states()
+            train_cls_accuracy.reset_states()
+            test_cls_accuracy.reset_states()
+            for step, ((target_features_RNA, target_values_RNA, target_batch_RNA, target_id_RNA), \
+                      (target_features_protein, target_values_protein, target_batch_Protein, target_id_Protein)) \
+                       in enumerate(zip(train_db_RNA, train_db_Protein)):
+                # enumerate
+                with tf.GradientTape() as tape:
+                    z1 = encode_network([[target_features_RNA, target_features_protein],
+                                         [target_values_RNA, target_values_protein]], training=True)
+                    z2 = decode_network([target_values_RNA, target_values_protein], training=True)
+                    mu_1 = mu_enc(z1)
+                    var_1 = tf.exp(var_enc(z1))
+                    ssl_loss = simclr_loss(z1, z2, temperature=0.1)
+                    loss = tf.keras.losses.kullback_leibler_divergence(mu_1, var_1) + ssl_loss
+                    train_loss(loss)
+
+                variables = [encode_network.trainable_variables,
+                             decode_network.trainable_variables,
+                             mu_enc.trainable_variables,
+                             var_enc.trainable_variables
+                             ]
+                grads = tape.gradient(loss, variables)
+                for grad, var in zip(grads, variables):
+                    opt_simclr.apply_gradients(zip(grad, var))
+
+                if step > 0 and step % 5 == 0:
+                    template = 'Epoch {}, step {}, simclr loss: {:0.4f}.'
+                    print(template.format(epoch + 1,
+                                          str(step),
+                                          train_loss.result()))
+        encode_network.save_weights(
+            os.path.join(weight_path, 'weight_encoder_epoch{}.h5'.format(str(epoch + 1))))
+        decode_network.save_weights(
+            os.path.join(weight_path, 'weight_decoder_epoch{}.h5'.format(str(epoch + 1))))
+
+    return weight_path
 
 def concerto_train_multimodal(RNA_tf_path: str, Protein_tf_path: str, weight_path: str, super_parameters=None):
     if not os.path.exists(weight_path):
@@ -1538,6 +1626,82 @@ def concerto_train_multimodal(RNA_tf_path: str, Protein_tf_path: str, weight_pat
 
 
 
+
+def concerto_test_inter_supervised(model_path: str, ref_tf_path: str, tissue_id:int, super_parameters=None):
+    if super_parameters is None:
+        super_parameters = {'batch_size': 128, 'epoch': 1, 'lr': 1e-5,'drop_rate': 0.1}
+
+    f = np.load(os.path.join(ref_tf_path, 'vocab_size.npz'))
+    vocab_size = int(f['vocab size'])
+    num_classes = int(f['classes number'])
+    label_dict = f['label_dict']
+    batch_dict = f['batch_dict']
+    batch_size = super_parameters['batch_size']
+    epoch = super_parameters['epoch']
+    encode_network = multi_embedding_attention_transfer(
+        multi_max_features=[vocab_size],
+        mult_feature_names=['RNA'],
+        embedding_dims=128,
+        include_attention=True,
+        drop_rate=super_parameters['drop_rate'],
+        head_1=128,
+        head_2=128,
+        head_3=128)
+    # tf_list_1 = [f for f in os.listdir(os.path.join(ref_tf_path)) if 'tfrecord' in f]
+    # train_source_list = [os.path.join(ref_tf_path, i) for i in tf_list_1]
+
+    # choose last epoch as test model
+    # weight_id_list = []
+    # weight_list = [f for f in os.listdir(model_path) if (f.endswith('h5') and f.startswith('weight') )]
+    # weight_list = [f for f in os.listdir(model_path) if (f.endswith('h5') and ('cls' in f))]  # yyyx 1214
+    # for id in weight_list:
+    #     id_1 = re.findall('.*epoch(.*).h5', id)  # f1
+    #     weight_id_list.append(int(id_1[0]))
+    valid_files = os.path.join(ref_tf_path, 'tf_{}.tfrecord'.format(tissue_id))
+    weight_name_ = f'weight_cls_epoch{epoch}.h5'
+    output = encode_network.layers[-1].output
+    output = tf.keras.layers.Dense(num_classes, activation='softmax', name='CLS')(output)
+    cls_network = tf.keras.Model(encode_network.input, outputs=output)
+    cls_network.load_weights(os.path.join(model_path, weight_name_))
+
+    t1 = time.time()
+    ref_db = create_classifier_dataset_multi_supervised(
+        [valid_files],
+        batch_size=batch_size,  # maybe slow
+        is_training=False,
+        data_augment=False,
+        shuffle_size=10000)
+
+    t2 = time.time()
+    print('load all tf in memory time(s)', t2 - t1)  # time consumption is huge this step!!!!
+    train_size = 0
+    for step, (target_features, target_values, target_label, target_batch, target_id) in enumerate(ref_db):
+        train_size += len(target_id)
+
+
+    t2 = time.time()
+    source_data_batch_1 = np.zeros((train_size))
+    source_data_label_1 = np.zeros((train_size))
+    source_data_pred_1 = np.zeros((train_size))
+    source_id_1 = []
+
+    all_samples = 0
+    for step, (target_features, target_values,target_label, target_batch, target_id) in enumerate(ref_db):
+
+        preds = cls_network([target_features, target_values], training=False)
+        preds_1 = np.argmax(preds, axis=1)
+        source_data_pred_1[all_samples:all_samples + len(target_id)] = preds_1
+        source_data_batch_1[all_samples:all_samples + len(target_id)] = target_batch
+        source_data_label_1[all_samples:all_samples + len(target_id)] = target_label
+        source_id_1.extend(list(target_id.numpy().astype('U')))
+        all_samples += len(target_id)
+
+    t3 = time.time()
+    print('test time', t3 - t2)
+    print('source_id len', len(source_id_1))
+
+    ari = adjusted_rand_score(source_data_label_1, source_data_pred_1)
+    return ari
 
 
 def concerto_test_1set_attention(model_path:str, ref_tf_path:str, super_parameters=None, n_cells_for_ref=5000):
@@ -1875,7 +2039,8 @@ def concerto_test_ref_query(model_path:str, ref_tf_path:str, query_tf_path:str, 
             batch_size=batch_size,
             is_training=False,
             data_augment=False,
-            shuffle_size=10000)
+            shuffle_size=10000,
+            drop_last=False)
         for step, (target_features, target_values, target_batch, target_id) in enumerate(ref_db):
             train_size += len(target_id)
             if step == 0:
@@ -1910,7 +2075,8 @@ def concerto_test_ref_query(model_path:str, ref_tf_path:str, query_tf_path:str, 
                                                    batch_size=batch_size,
                                                    is_training=False,
                                                    data_augment=False,
-                                                   shuffle_size=10000)
+                                                   shuffle_size=10000,
+                                                   drop_last=False)
         for step, (target_features, target_values, target_batch, target_id) in enumerate(query_db):
             train_size += len(target_id)
             if step == 0:
@@ -1946,9 +2112,171 @@ def concerto_test_ref_query(model_path:str, ref_tf_path:str, query_tf_path:str, 
     print('reference embedding shape', ref_embedding.shape)
     print('ref id length',len(source_data_id_subsample))
     print('query id length', len(target_data_id))
-    return ref_embedding, query_embedding,source_data_id_subsample,target_data_id # N*dim, 顺序按照adata1， adata2的cell 顺序；
+    return ref_embedding, query_embedding, source_data_id_subsample, target_data_id # N*dim, 顺序按照adata1， adata2的cell 顺序；
 
 
+def concerto_test_ref_query_multimodal(
+        model_path, 
+        ref_RNA_tf_path, 
+        ref_Protein_tf_path,
+        query_RNA_tf_path,
+        query_Protein_tf_path, 
+        super_parameters=None
+    ):
+    if super_parameters is None:
+        super_parameters = {'batch_size': 32, 'epoch': 1, 'lr': 1e-5,'drop_rate': 0.1}
+
+    f = np.load(os.path.join(ref_RNA_tf_path, 'vocab_size.npz'))
+    vocab_size_RNA = int(f['vocab size'])
+    f = np.load(os.path.join(ref_Protein_tf_path, 'vocab_size.npz'))
+    vocab_size_Protein = int(f['vocab size'])
+
+    encode_network = multi_embedding_attention_transfer(
+        multi_max_features=[vocab_size_RNA, vocab_size_Protein],
+        mult_feature_names=['RNA', 'Protein'],
+        embedding_dims=128,
+        include_attention=True,
+        drop_rate=super_parameters['drop_rate'],
+        head_1=128,
+        head_2=128,
+        head_3=128)
+
+    tf_list_1 = [f for f in os.listdir(os.path.join(ref_RNA_tf_path)) if 'tfrecord' in f]
+    train_source_list_RNA = []
+    train_source_list_Protein = []
+    for i in tf_list_1:
+        train_source_list_RNA.append(os.path.join(ref_RNA_tf_path, i))
+        train_source_list_Protein.append(os.path.join(ref_Protein_tf_path, i))
+
+
+    tf_list_2 = [f for f in os.listdir(os.path.join(query_RNA_tf_path)) if 'tfrecord' in f]
+    train_target_list_RNA = []
+    train_target_list_Protein = []
+    for i in tf_list_2:
+        train_target_list_RNA.append(os.path.join(query_RNA_tf_path, i))
+        train_target_list_Protein.append(os.path.join(query_Protein_tf_path, i))
+    
+    weight_id_list = []
+    weight_list = [f for f in os.listdir(model_path) if f.endswith('h5')]
+
+    for id in weight_list:
+        id_1 = re.findall('.*epoch(.*).h.*', id)  # f1
+        weight_id_list.append(int(id_1[0]))
+
+    # encode_network.load_weights(model_path + 'weight_encoder_epoch{}.h5'.format(max(weight_id_list)))
+    encode_network.load_weights(model_path + 'weight_encoder_epoch{}.h5'.format(max(weight_id_list)), by_name=True) # yyyx0126, 支持多模态模型
+    
+    source_data_batch = []
+    source_data_feature = []
+    source_data_id = []
+    batch_size = super_parameters['batch_size']
+
+    for RNA_file, Protein_file in zip(train_source_list_RNA, train_source_list_Protein):
+        print(RNA_file)
+        print(Protein_file)
+        train_db_RNA = create_classifier_dataset_multi([RNA_file],
+                                                   batch_size=super_parameters['batch_size'],
+                                                   is_training=False,
+                                                   data_augment=False,
+                                                   shuffle_size=10000,
+                                                   drop_last=False)
+
+        train_db_Protein = create_classifier_dataset_multi([Protein_file],
+                                                   batch_size=super_parameters['batch_size'],
+                                                   is_training=False,
+                                                   data_augment=False,
+                                                   shuffle_size=10000,
+                                                   drop_last=False)
+
+        train_size = 0
+        for step, ((source_features_RNA, source_values_RNA, source_batch_RNA, source_id_RNA), \
+                  (source_features_protein, source_values_protein, source_batch_Protein, source_id_Protein)) \
+                   in enumerate(zip(train_db_RNA, train_db_Protein)):
+            train_size += len(source_id_RNA)
+            if step==0:
+                output = encode_network([[source_features_RNA, source_features_protein],
+                                         [source_values_RNA, source_values_protein]], training=False)
+
+        dim = output.shape[1]
+        source_data_feature_1 = np.zeros((train_size, dim))
+        source_data_batch_1 = np.zeros((train_size))
+        #source_id_batch_1 = np.zeros((train_size))
+        source_id_batch_1 = []
+        all_samples = 0
+        for step, ((source_features_RNA, source_values_RNA, source_batch_RNA, source_id_RNA), \
+                  (source_features_protein, source_values_protein, source_batch_Protein, source_id_Protein)) \
+                   in enumerate(zip(train_db_RNA, train_db_Protein)):
+            output = encode_network([[source_features_RNA, source_features_protein],
+                                         [source_values_RNA, source_values_protein]], training=False)
+            output = tf.nn.l2_normalize(output, axis=-1)
+            source_data_feature_1[all_samples:all_samples + len(source_id_RNA), :] = output
+            source_data_batch_1[all_samples:all_samples + len(source_id_RNA)] = source_batch_RNA
+            # source_id_batch_1[all_samples:all_samples + len(source_id_RNA)] = source_id_RNA.numpy().decode("utf-8")
+            source_id_batch_1.extend(list(source_id_RNA.numpy().astype('U')))
+
+            all_samples += len(source_id_RNA)
+        source_data_feature.extend(source_data_feature_1)
+        source_data_batch.extend(source_data_batch_1)
+        source_data_id.extend(source_id_batch_1)
+
+    target_data_batch = []
+    target_data_feature = []
+    target_data_id = []
+    for RNA_file, Protein_file in zip(train_target_list_RNA, train_target_list_Protein):
+        print(RNA_file)
+        print(Protein_file)
+        train_db_RNA = create_classifier_dataset_multi([RNA_file],
+                                                   batch_size=super_parameters['batch_size'],
+                                                   is_training=False,
+                                                   data_augment=False,
+                                                   shuffle_size=10000,
+                                                   drop_last=False)
+        train_db_Protein = create_classifier_dataset_multi([Protein_file],
+                                                   batch_size=super_parameters['batch_size'],
+                                                   is_training=False,
+                                                   data_augment=False,
+                                                   shuffle_size=10000,
+                                                   drop_last=False)
+        train_size = 0
+        for step, ((target_features_RNA, target_values_RNA, target_batch_RNA, target_id_RNA), \
+                  (target_features_protein, target_values_protein, target_batch_Protein, target_id_Protein)) \
+                   in enumerate(zip(train_db_RNA, train_db_Protein)):
+            train_size += len(target_id_RNA)
+            if step==0:
+                output = encode_network([[target_features_RNA, target_features_protein],
+                                         [target_values_RNA, target_values_protein]], training=False)
+
+        dim = output.shape[1]
+        target_data_feature_1 = np.zeros((train_size, dim))
+        target_data_batch_1 = np.zeros((train_size))
+        target_id_batch_1 = []
+        all_samples = 0
+        for step, ((target_features_RNA, target_values_RNA, target_batch_RNA, target_id_RNA), \
+                  (target_features_protein, target_values_protein, target_batch_Protein, target_id_Protein)) \
+                   in enumerate(zip(train_db_RNA, train_db_Protein)):
+            output = encode_network([[target_features_RNA, target_features_protein],
+                                         [target_values_RNA, target_values_protein]], training=False)
+            output = tf.nn.l2_normalize(output, axis=-1)
+            target_data_feature_1[all_samples:all_samples + len(target_id_RNA), :] = output
+            target_data_batch_1[all_samples:all_samples + len(target_id_RNA)] = target_batch_RNA
+            # target_id_batch_1[all_samples:all_samples + len(target_id_RNA)] = target_id_RNA.numpy().decode("utf-8")
+            target_id_batch_1.extend(list(target_id_RNA.numpy().astype('U')))
+
+            all_samples += len(target_id_RNA)
+        target_data_feature.extend(target_data_feature_1)
+        target_data_batch.extend(target_data_batch_1)    
+        target_data_id.extend(target_id_batch_1)
+
+    ref_embedding = np.array(source_data_feature)
+    query_embedding = np.array(target_data_feature)
+    source_data_id_subsample = source_data_id
+    # source_data_id_subsample = [i.decode("utf-8") for i in source_data_id_subsample]
+    # target_data_id = [i.decode("utf-8") for i in target_data_id]
+    print('query embedding shape', query_embedding.shape)
+    print('reference embedding shape', ref_embedding.shape)
+    print('ref id length',len(source_data_id_subsample))
+    print('query id length', len(target_data_id))
+    return ref_embedding, query_embedding, source_data_id_subsample, target_data_id# N*dim, 顺序按照adata1， adata2的cell 顺序；
 
 def concerto_test_ref(model_path:str, ref_tf_path:str, super_parameters=None,saved_weight_path=None):
     if super_parameters is None:
@@ -1998,7 +2326,7 @@ def concerto_test_ref(model_path:str, ref_tf_path:str, super_parameters=None,sav
             is_training=False,
             data_augment=False,
             shuffle_size=10000)
-        for step, (target_features, target_values, target_batch, target_id) in enumerate(ref_db):
+        for step, (target_features, target_values, target_batch, target_id) in enumerate(ref_db):  # 这...
             train_size += len(target_id)
             if step == 0:
                 output = encode_network([target_features, target_values], training=False)
@@ -2281,7 +2609,7 @@ def concerto_test_multimodal_project(model_path: str, RNA_tf_path: str, Protein_
 
 
 
-
+# 这里的feature也可看作softmax前的logits
 def knn_classifier(ref_embedding, query_embedding, ref_anndata, source_data_id, column_name,k, num_chunks=100):
     '''
     return :
@@ -2308,7 +2636,7 @@ def knn_classifier(ref_embedding, query_embedding, ref_anndata, source_data_id, 
         similarity = tf.matmul(features, train_features)
         target_distances, target_indices = tf.math.top_k(similarity, k, sorted=True)
 
-        for distances, indices in zip(target_distances, target_indices):
+        for distances, indices in zip(target_distances, target_indices):   # 前面还是similarity命名，到这就成了distance
             selected_label = {}
             selected_count = {}
             count = 0
@@ -2322,10 +2650,12 @@ def knn_classifier(ref_embedding, query_embedding, ref_anndata, source_data_id, 
                 selected_count[label] += 1
                 count += 1
 
-            filter_label_list = sorted(selected_label.items(), key=lambda x: x[1], reverse=True)
+            # 对每个样本，近邻中累计sim最大的train class成为该样本label
+            filter_label_list = sorted(selected_label.items(), key=lambda x: x[1], reverse=True) 
             target_pred_labels.append(filter_label_list[0][0])
 
-            prob = selected_label[filter_label_list[0][0]] / selected_count[filter_label_list[0][0]]
+            # 与该样本类别的所有sim求均值
+            prob = selected_label[filter_label_list[0][0]] / selected_count[filter_label_list[0][0]]  
             target_pred_prob.append(prob)
 
     target_neighbor = np.array(target_pred_labels)
